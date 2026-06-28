@@ -2,34 +2,52 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ "main" ]   # Trigger on pushes to main branch
+    branches:
+      - main
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout source
+    # Checkout source code
+    - name: Checkout repository
       uses: actions/checkout@v3
 
-    - name: Log in to GitHub Container Registry
+    # Log in to GitHub Container Registry
+    - name: Log in to GHCR
       uses: docker/login-action@v2
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build Docker image
-      run: docker build -t ghcr.io/${{ github.actor }}/myapp:latest .
+    # Build and push Docker image with unique tag
+    - name: Build and push Docker image
+      run: |
+        VERSION=$(date +'%Y%m%d-%H%M')
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        docker build -t ghcr.io/${{ github.repository }}/myapp:$VERSION .
+        docker push ghcr.io/${{ github.repository }}/myapp:$VERSION
 
-    - name: Push Docker image
-      run: docker push ghcr.io/${{ github.actor }}/myapp:latest
+    # Update Kubernetes manifest with new image tag
+    - name: Update deployment manifest
+      run: |
+        sed -i "s|ghcr.io.*/myapp:.*|ghcr.io/${{ github.repository }}/myapp:${VERSION}|g" myapp-deployment.yml
 
+    # Set up kubectl
     - name: Set up kubectl
       uses: azure/setup-kubectl@v3
       with:
-        version: 'latest'
+        version: v1.29.2
 
+    # Configure kubeconfig (requires secret)
+    - name: Configure kubeconfig
+      run: |
+        echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
+
+    # Apply updated manifest
     - name: Deploy to Kubernetes
       run: |
         kubectl apply -f myapp-deployment.yml
+        kubectl rollout status deployment/myapp-deployment
