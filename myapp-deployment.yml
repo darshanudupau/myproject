@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: myapp-deployment
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: myapp
@@ -13,22 +13,26 @@ spec:
         app: myapp
     spec:
       containers:
-      - name: myapp
-        image: ghcr.io/darshanudupau/myapp:latest
+      - name: myapp-container
+        image: ghcr.io/darshanudupau/myapp-service:v1.0.0
         ports:
         - containerPort: 8080
-      imagePullSecrets:
-      - name: ghcr-secret   # Added secret reference
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: myapp-service
-spec:
-  selector:
-    app: myapp
-  ports:
-    - protocol: TCP
-      port: 8080
-      targetPort: 8080
-  type: NodePort
+        env:
+        - name: AI_SERVICE_URL
+          value: "http://ai-service:8000/predict"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 2
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
